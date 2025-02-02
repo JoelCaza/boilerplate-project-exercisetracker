@@ -36,7 +36,6 @@ const Exercise = mongoose.model('Exercise', exerciseSchema);
 
 // Rutas de la API
 
-// 1. Crear usuario
 app.post('/api/users', async (req, res) => {
   const { username } = req.body;
   
@@ -45,7 +44,6 @@ app.post('/api/users', async (req, res) => {
   }
 
   try {
-    // Verificar si el usuario ya existe
     const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.json({
@@ -54,7 +52,6 @@ app.post('/api/users', async (req, res) => {
       });
     }
 
-    // Crear nuevo usuario
     const newUser = new User({ username });
     await newUser.save();
     
@@ -68,7 +65,6 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// 2. Obtener todos los usuarios
 app.get('/api/users', async (req, res) => {
   try {
     const users = await User.find({}, '_id username');
@@ -81,12 +77,10 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// 3. Añadir ejercicio
 app.post('/api/users/:_id/exercises', async (req, res) => {
   const { description, duration, date } = req.body;
   const userId = req.params._id;
 
-  // Validaciones
   if (!mongoose.Types.ObjectId.isValid(userId)) {
     return res.status(400).json({ error: 'Invalid user ID' });
   }
@@ -124,12 +118,10 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
   }
 });
 
-// 4. Obtener logs
 app.get('/api/users/:_id/logs', async (req, res) => {
   const userId = req.params._id;
   const { from, to, limit } = req.query;
 
-  // Validar ID de usuario
   if (!mongoose.Types.ObjectId.isValid(userId)) {
     return res.status(400).json({ error: 'Invalid user ID' });
   }
@@ -138,11 +130,11 @@ app.get('/api/users/:_id/logs', async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Construir query
+    // Construir query base
     const query = { userId: user._id };
     const dateFilter = {};
 
-    // Validar fechas
+    // Añadir filtros de fecha si existen
     if (from) {
       const fromDate = new Date(from);
       if (isNaN(fromDate)) return res.status(400).json({ error: 'Invalid from date' });
@@ -155,18 +147,22 @@ app.get('/api/users/:_id/logs', async (req, res) => {
     }
     if (from || to) query.date = dateFilter;
 
-    // Manejar límite
-    let queryBuilder = Exercise.find(query)
-      .select('description duration date -_id')
-      .sort({ date: 'asc' });
+    // Obtener el conteo total sin límite
+    const count = await Exercise.countDocuments(query);
 
+    // Construir query para los ejercicios
+    let exercisesQuery = Exercise.find(query)
+      .select('description duration date -_id')
+      .sort({ date: 1 }); // 1 = ascending
+
+    // Aplicar límite si existe
     if (limit) {
       const limitNumber = parseInt(limit);
       if (isNaN(limitNumber)) return res.status(400).json({ error: 'Invalid limit' });
-      queryBuilder = queryBuilder.limit(limitNumber);
+      exercisesQuery = exercisesQuery.limit(limitNumber);
     }
 
-    const exercises = await queryBuilder.exec();
+    const exercises = await exercisesQuery.exec();
 
     // Formatear respuesta
     const log = exercises.map(exercise => ({
@@ -178,8 +174,8 @@ app.get('/api/users/:_id/logs', async (req, res) => {
     res.json({
       _id: user._id.toString(),
       username: user.username,
-      count: log.length,
-      log
+      count: count, // Usar el conteo total con filtros
+      log: log // Resultados paginados
     });
 
   } catch (err) {
@@ -187,6 +183,5 @@ app.get('/api/users/:_id/logs', async (req, res) => {
   }
 });
 
-// Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
